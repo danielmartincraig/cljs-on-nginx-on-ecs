@@ -1,0 +1,59 @@
+name: Build and Push Docker Image
+on:
+  # Runs on pushes targeting the default branch
+  push:
+    branches: [$default-branch]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+env:
+  TF_CLOUD_ORGANIZATION: "example"
+  TF_API_TOKEN: "${{ secrets.TF_API_TOKEN }}"
+  TF_WORKSPACE: "example"
+  CONFIG_DIRECTORY: "infra"
+  AWS_REGION: "us-east-1"
+  ECR_REPOSITORY: "example/example"
+  IMAGE_TAG: "${{ github.sha }}"
+
+permissions:
+  contents: read
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  # Single deploy job since we're just deploying
+  deploy:
+    runs-on: ubuntu-latest
+    environment: dev
+    steps: 
+      - uses: hashicorp/setup-terraform@v2.0.3
+        with:
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+      - uses: actions/checkout@v4
+
+      - name: Public IP
+        uses: haythem/public-ip@v1.3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4.0.3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR Public
+        id: login-ecr-public
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: public
+
+      - name: Build, tag, and push Docker image
+        run: |
+          docker build -t ${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }} . -f infra/Dockerfile
+          docker tag ${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }} public.ecr.aws/d8i0d8d4/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+          docker push public.ecr.aws/d8i0d8d4/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
